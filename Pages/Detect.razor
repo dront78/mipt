@@ -1,0 +1,296 @@
+@page "/detect"
+
+<PageTitle>Детектор</PageTitle>
+@using mipt.Data;
+@inject DetectService Detector
+@inject IJSRuntime JsRuntime
+
+<h3>Анализ изображения</h3>
+
+<style>
+    .ONNXImage {
+        width: auto;
+        height: auto;
+        max-width: 544px;
+        max-height: 544px;
+    }
+</style>
+
+<div class="container">
+    <div class="row">
+        <div class="col-md-6" style="padding: 5px 12px;">
+            <InputFile accept="image/png, image/jpeg" OnChange="UploadImage" />
+        </div>
+        <div class="col-md-6" style="padding: 5px 12px;"><button class="btn btn-primary" type="button"
+            @onclick="ProcessImage" style="background: var(--bs-teal);border-style: none;">Анализировать</button>
+        </div>
+    </div>
+</div>
+<div class="container">
+    <div class="row">
+        <div class="col-md-6" style="padding: 5px 12px;"><img src="@SourceImage" class="ONNXImage" alt="source image">
+        </div>
+        <div class="col-md-6" style="padding: 5px 12px;"><img src="@ProcessedImage" class="ONNXImage"
+                alt="processed image"></div>
+    </div>
+</div>
+
+@code {
+    /// blank 1x1 gif to avoid broken image icon on the page
+    private const string BlankImage = "data:image/gif;base64,R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==";
+    /// hour glass image for displaying a progress
+    private const string HourGlass =
+        @"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAiAAAAGACAYAAACUfdlvAAAA0GVYSWZJSSoACAAAAAoAAAEEAAEA
+AAAgAgAAAQEEAAEAAACAAQAAAgEDAAMAAACGAAAAEgEDAAEAAAABAAAAGgEFAAEAAACMAAAAGwEF
+AAEAAACUAAAAKAEDAAEAAAACAAAAMQECAA0AAACcAAAAMgECABQAAACqAAAAaYcEAAEAAAC+AAAA
+AAAAAAgACAAIABgAAAABAAAAGAAAAAEAAABHSU1QIDIuMTAuMzQAADIwMjM6MDc6MDQgMTY6NDY6
+MzUAAQABoAMAAQAAAAEAAAAAAAAAK04spwAAAYRpQ0NQSUNDIHByb2ZpbGUAAHicfZE9SMNAHMVf
+00pFKg52EHHIUJ3soiKCS61CESqEWqFVB5NLv6BJQ5Li4ii4Fhz8WKw6uDjr6uAqCIIfIK4uToou
+UuL/kkKLGA+O+/Hu3uPuHSA0q0yzQglA020zk0qKufyqGH5FGCFEEMeszCxjTpLS8B1f9wjw9S7O
+s/zP/Tn61YLFgIBInGCGaRNvEE9v2gbnfeIoK8sq8TnxuEkXJH7kuuLxG+eSywLPjJrZzDxxlFgs
+dbHSxaxsasRTxDFV0ylfyHmsct7irFXrrH1P/sJIQV9Z5jrNEaSwiCVIEKGgjgqqsKmvCnRSLGRo
+P+njH3b9ErkUclXAyLGAGjTIrh/8D353axUnJ7ykSBLoeXGcj1EgvAu0Go7zfew4rRMg+Axc6R1/
+rQnMfJLe6GixI2BgG7i47mjKHnC5Aww9GbIpu1KQplAsAu9n9E15YPAW6Fvzemvv4/QByFJX6Rvg
+4BAYK1H2us+7e7t7+/dMu78f2AFyz0sEgasAAA14aVRYdFhNTDpjb20uYWRvYmUueG1wAAAAAAA8
+P3hwYWNrZXQgYmVnaW49Iu+7vyIgaWQ9Ilc1TTBNcENlaGlIenJlU3pOVGN6a2M5ZCI/Pgo8eDp4
+bXBtZXRhIHhtbG5zOng9ImFkb2JlOm5zOm1ldGEvIiB4OnhtcHRrPSJYTVAgQ29yZSA0LjQuMC1F
+eGl2MiI+CiA8cmRmOlJERiB4bWxuczpyZGY9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkvMDIvMjIt
+cmRmLXN5bnRheC1ucyMiPgogIDxyZGY6RGVzY3JpcHRpb24gcmRmOmFib3V0PSIiCiAgICB4bWxu
+czp4bXBNTT0iaHR0cDovL25zLmFkb2JlLmNvbS94YXAvMS4wL21tLyIKICAgIHhtbG5zOnN0RXZ0
+PSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvc1R5cGUvUmVzb3VyY2VFdmVudCMiCiAgICB4
+bWxuczpHSU1QPSJodHRwOi8vd3d3LmdpbXAub3JnL3htcC8iCiAgICB4bWxuczpkYz0iaHR0cDov
+L3B1cmwub3JnL2RjL2VsZW1lbnRzLzEuMS8iCiAgICB4bWxuczp0aWZmPSJodHRwOi8vbnMuYWRv
+YmUuY29tL3RpZmYvMS4wLyIKICAgIHhtbG5zOnhtcD0iaHR0cDovL25zLmFkb2JlLmNvbS94YXAv
+MS4wLyIKICAgeG1wTU06RG9jdW1lbnRJRD0iZ2ltcDpkb2NpZDpnaW1wOjVkNDNjYzkwLTRkMjUt
+NDRjZi04NzI1LTExZjEyNmU3MTJjMCIKICAgeG1wTU06SW5zdGFuY2VJRD0ieG1wLmlpZDoxZTQ3
+YzRlZS05YWNjLTRmMzgtYWNmNC1hY2RlMDE1NjQwOGYiCiAgIHhtcE1NOk9yaWdpbmFsRG9jdW1l
+bnRJRD0ieG1wLmRpZDphMjYwNjg1OS0wNjRhLTQzNDQtODMxMS05YzMwZDI1ZmM0YjAiCiAgIEdJ
+TVA6QVBJPSIyLjAiCiAgIEdJTVA6UGxhdGZvcm09IkxpbnV4IgogICBHSU1QOlRpbWVTdGFtcD0i
+MTY4ODQ3NDc5NTY5NDY2MSIKICAgR0lNUDpWZXJzaW9uPSIyLjEwLjM0IgogICBkYzpGb3JtYXQ9
+ImltYWdlL3BuZyIKICAgdGlmZjpPcmllbnRhdGlvbj0iMSIKICAgeG1wOkNyZWF0b3JUb29sPSJH
+SU1QIDIuMTAiCiAgIHhtcDpNZXRhZGF0YURhdGU9IjIwMjM6MDc6MDRUMTY6NDY6MzUrMDQ6MDAi
+CiAgIHhtcDpNb2RpZnlEYXRlPSIyMDIzOjA3OjA0VDE2OjQ2OjM1KzA0OjAwIj4KICAgPHhtcE1N
+Okhpc3Rvcnk+CiAgICA8cmRmOlNlcT4KICAgICA8cmRmOmxpCiAgICAgIHN0RXZ0OmFjdGlvbj0i
+c2F2ZWQiCiAgICAgIHN0RXZ0OmNoYW5nZWQ9Ii8iCiAgICAgIHN0RXZ0Omluc3RhbmNlSUQ9Inht
+cC5paWQ6MDkyYzdmYWMtZDVlZS00OTBjLTlhYzMtYzc1ODIzNTE5MTI5IgogICAgICBzdEV2dDpz
+b2Z0d2FyZUFnZW50PSJHaW1wIDIuMTAgKExpbnV4KSIKICAgICAgc3RFdnQ6d2hlbj0iMjAyMy0w
+Ny0wNFQxNjo0NjozNSswNDowMCIvPgogICAgPC9yZGY6U2VxPgogICA8L3htcE1NOkhpc3Rvcnk+
+CiAgPC9yZGY6RGVzY3JpcHRpb24+CiA8L3JkZjpSREY+CjwveDp4bXBtZXRhPgogICAgICAgICAg
+ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg
+ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgCiAgICAgICAgICAgICAgICAgICAgICAg
+ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg
+ICAgICAgICAgICAgICAgICAgICAKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg
+ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg
+ICAgICAgIAogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg
+ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgCiAgICAg
+ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg
+ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAKICAgICAgICAgICAgICAgICAg
+ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg
+ICAgICAgICAgICAgICAgICAgICAgICAgIAogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg
+ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg
+ICAgICAgICAgICAgCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg
+ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAK
+ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg
+ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIAogICAgICAgICAgICAg
+ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg
+ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgCiAgICAgICAgICAgICAgICAgICAgICAgICAg
+ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg
+ICAgICAgICAgICAgICAgICAKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg
+ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg
+ICAgIAogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg
+ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgCiAgICAgICAg
+ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg
+ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAKICAgICAgICAgICAgICAgICAgICAg
+ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg
+ICAgICAgICAgICAgICAgICAgICAgIAogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg
+ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg
+ICAgICAgICAgCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg
+ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAKICAg
+ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg
+ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIAogICAgICAgICAgICAgICAg
+ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg
+ICAgICAgICAgICAgICAgICAgICAgICAgICAgCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAg
+ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg
+ICAgICAgICAgICAgICAKICAgICAgICAgICAgICAgICAgICAgICAgICAgCjw/eHBhY2tldCBlbmQ9
+InciPz6z+WRfAAAACXBIWXMAAAOxAAADsQH1g+1JAAAAB3RJTUUH5wcEDC4jWq1L5wAAAAZiS0dE
+AP8A/wD/oL2nkwAAEXtJREFUeNrt3XuQW9V9B3DbBBo8NDxryAAhMAkNGCiwaTy7SNeS1tMZCoRH
+sqxk+keglLQFCqENDPZuZtPO9EnIE4ekhBI6PIaEpKGldEIaQljtYgItbXglvKYNYJNMeRnjFLDd
+c40M6vHVWtIarbT7+cycf7TSvfece2Z+3726OnfePAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+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
+gKwyKk0HkFXRlaOzjAoANKFQKJwYBZD7h4aGdjIyU0vHKIzVf0ZXQE4wMgDQhFwut2conq9GIeSG
+fD5/bPjbIdq2LR2bENxujMbs1fDaHmYUADR/FeQqv2KZXgtjeKWZBAAtGBwc3DsU0ccEibbbY/39
+/XuZSQDQ+lWQA5IkuVuYaLlNlkql/c0gAGjfgmKx+JH0HpDQ7g3tcS2zpWNzQwhsp4Uxm2/aAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQG/5P2G3Ku677p4cAAAAAElF
+TkSuQmCC";
+    /// default image to test the app is working without uploading anything
+    private const string DefaultImage = "test.jpg";
+    /// source image reference
+    private string SourceImage = Path.Combine("tmp", DefaultImage);
+    /// processed image reference
+    private string ProcessedImage = BlankImage;
+    /// source file is used to pass to the model because it requires absolute path
+    private string SourceFile = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "tmp", DefaultImage);
+
+    /// <summary>
+    /// Upload file handler. Moves customer file to the temp directory,
+    /// Note. Application is not user sessions, so
+    /// work files can be deleted if multiple users are working with the demo service.
+    /// File size is limited to 2 * 1024 * 1024 bytes (2Mb)
+    /// /// </summary>
+    /// <param name="e"></param>
+    /// <returns></returns>
+    async Task UploadImage(InputFileChangeEventArgs e)
+    {
+        try
+        {
+            // cleanup old uploaded files to avoid disk overflow
+            string[] files = Directory.GetFiles(Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "tmp"));
+            foreach (string filename in files)
+            {
+                var name = new FileInfo(filename).Name.ToLower();
+                if (name != DefaultImage && !name.Contains(".processed"))
+                {
+                    File.Delete(filename);
+                }
+            }
+
+            // draw hour glass
+            SourceImage = HourGlass;
+            await InvokeAsync(StateHasChanged);
+            await Task.Delay(1);
+
+            // upload image
+            string UUID = Detect.UUID() + Path.GetExtension(e.File.Name);
+            SourceFile = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "tmp", UUID);
+            await using FileStream fs = new(path: SourceFile, mode: FileMode.Create, access: FileAccess.ReadWrite);
+            await e.File.OpenReadStream(2 * 1024 * 1024).CopyToAsync(fs);
+
+            // draw uploaded image
+            SourceImage = Path.Combine("tmp", UUID);
+            await InvokeAsync(StateHasChanged);
+            await Task.Delay(1);
+        }
+        catch (Exception ex)
+        {
+            await JsRuntime.InvokeVoidAsync("alert", ex.Message);
+            SourceImage = Path.Combine("tmp", DefaultImage);
+            await InvokeAsync(StateHasChanged);
+            await Task.Delay(1);
+        }
+    }
+
+    /// <summary>
+    /// Process the image and updates processed file reference to demonstrate the result.
+    /// </summary>
+    async Task ProcessImage()
+    {
+        try
+        {
+            // cleanup old processed files to avoid disk overflow
+            string[] files = Directory.GetFiles(Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "tmp"));
+            foreach (string filename in files)
+            {
+                var name = new FileInfo(filename).Name.ToLower();
+                if (name.Contains(".processed"))
+                {
+                    File.Delete(filename);
+                }
+            }
+
+            // draw hour glass
+            ProcessedImage = HourGlass;
+            await InvokeAsync(StateHasChanged);
+            await Task.Delay(1);
+
+            // process and draw the result
+            ProcessedImage = (await
+            Detector.DetectAsync(SourceFile)).Replace(Path.Combine(Directory.GetCurrentDirectory(), "wwwroot"), "");
+            await InvokeAsync(StateHasChanged);
+            await Task.Delay(1);
+        }
+        catch (Exception ex)
+        {
+            await JsRuntime.InvokeVoidAsync("alert", ex.Message);
+            ProcessedImage = BlankImage;
+            await InvokeAsync(StateHasChanged);
+            await Task.Delay(1);
+        }
+    }
+
+    /// generates random filename to bypass draw caches
+    private static string UUID()
+    {
+        return Convert.ToBase64String(Guid.NewGuid().ToByteArray()).Replace("=", "").Replace("+", "").Replace("/", "");
+    }
+}
